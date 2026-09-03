@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Caragen — Generador de caras</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="intro">
+        <p class="eyebrow">Caragen / laboratorio de retratos</p>
+        <h1>Crea una cara<br /><em>que sea única.</em></h1>
+        <p class="lede">Combina los rasgos, ajusta su paleta y descarga tu personaje como SVG.</p>
+        <div class="actions">
+          <button class="button button--primary" id="randomize" type="button">✦ Aleatorio</button>
+          <button class="button button--outline" id="download" type="button">↓ Descargar SVG</button>
+        </div>
+      </section>
+
+      <section class="portrait-panel" aria-label="Vista previa de la cara">
+        <div class="portrait-frame">
+          <div id="portrait" class="portrait" aria-live="polite"></div>
+        </div>
+        <p id="status" class="status">Preparando los rasgos…</p>
+      </section>
+
+      <section class="controls-panel" aria-label="Personalización de la cara">
+        <div class="controls-heading">
+          <p class="eyebrow">Personaliza</p>
+          <p>Desliza para cambiar cada rasgo.</p>
+        </div>
+        <div id="feature-controls" class="feature-controls"></div>
+        <div class="palette-heading">
+          <p class="eyebrow">Color</p>
+          <p>Elige una tonalidad para cada detalle.</p>
+        </div>
+        <div id="color-controls" class="color-controls"></div>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
