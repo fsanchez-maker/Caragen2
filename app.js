@@ -14,7 +14,7 @@ const layers = [
   ['Base', 'Base', ['Base'], false, true]
 ];
 
-// Paletas originales estáticas (se usan de referencia para aleatorio y reseteos)
+// Paletas originales estáticas
 const originalPalettes = {
   Labios: ['#DE857C', '#D47475', '#C25F52', '#AE8685'],
   Piel: ['#F6C4A8', '#E4AD90', '#AA8056', '#715030'],
@@ -25,20 +25,18 @@ const originalPalettes = {
   Marcas: ['#BA9088', '#2C1B0E'], Cavidad: ['#2C1B0E'], Blanco: ['#FDFBFB'], Negro: ['#060507']
 };
 
-// Paletas de trabajo (permiten modificaciones personalizadas del usuario)
 let palettes = JSON.parse(JSON.stringify(originalPalettes));
 
 const state = { 
   choices: {}, 
   colors: Object.fromEntries(Object.entries(palettes).map(([name, values]) => [name, values[0]])),
-  marcasOpacity: 1 // Rango 0 a 1 (100%)
+  marcasOpacity: 1
 };
 
 const sourceCache = new Map();
 const portrait = document.querySelector('#portrait');
 const status = document.querySelector('#status');
 
-// Regla del color de Marcas según la Piel
 function applySkinToneRule() {
   const currentSkinColor = state.colors.Piel;
   const skinIndex = palettes.Piel.indexOf(currentSkinColor);
@@ -74,7 +72,6 @@ function recolor(svg) {
         if (child.hasAttribute('stroke') && child.getAttribute('stroke') !== 'none') {
           child.setAttribute('stroke', color);
         }
-        // Aplicar la opacidad de Marcas
         if (id === 'Marcas') {
           child.setAttribute('opacity', state.marcasOpacity);
         }
@@ -140,23 +137,23 @@ function buildColors() {
       button.className = 'swatch';
       button.type = 'button';
       button.style.background = color;
-      button.title = `${name}: Haz clic para seleccionar | Doble clic para cambiar color`;
+      button.title = `${name}: Haz clic para seleccionar`;
       button.setAttribute('aria-label', `${name}: ${color}`);
       button.setAttribute('aria-pressed', color === state.colors[name]);
-      
-      // Input tipo color (RGB/Hex) para permitir modificación por el usuario
+
       const picker = document.createElement('input');
       picker.type = 'color';
       picker.value = color.length === 7 ? color : '#000000';
+      // Desactivamos interacción directa con el input invisible para dejar que el botón maneje el clic inicial
       picker.style.position = 'absolute';
       picker.style.top = '0';
       picker.style.left = '0';
-      picker.style.opacity = '0';
       picker.style.width = '100%';
       picker.style.height = '100%';
-      picker.style.cursor = 'pointer';
+      picker.style.opacity = '0';
+      picker.style.pointerEvents = 'none';
 
-      // Un clic selecciona el color
+      // Al hacer clic en el botón se selecciona el color e inmediatamente abre la paleta
       button.onclick = () => {
         state.colors[name] = palettes[name][index];
         if (name === 'Piel') applySkinToneRule();
@@ -165,18 +162,31 @@ function buildColors() {
           const swatchColor = s.style.background;
           s.setAttribute('aria-pressed', String(swatchColor === state.colors[name]));
         });
+        
         compose();
+        
+        // Abre el selector de color automáticamente
+        picker.showPicker ? picker.showPicker() : picker.click();
       };
 
-      // Selección de nuevo color mediante selector nativo
-      picker.addEventListener('change', (e) => {
+      // Actualización en TIEMPO REAL mientras arrastras en el selector
+      const updateLiveColor = (e) => {
         const newColor = e.target.value.toUpperCase();
         palettes[name][index] = newColor;
         button.style.background = newColor;
         state.colors[name] = newColor;
         if (name === 'Piel') applySkinToneRule();
+        
+        document.querySelectorAll('#color-controls .swatch').forEach(s => {
+          const swatchColor = s.style.background;
+          s.setAttribute('aria-pressed', String(swatchColor === state.colors[name]));
+        });
+
         compose();
-      });
+      };
+
+      picker.addEventListener('input', updateLiveColor);
+      picker.addEventListener('change', updateLiveColor);
 
       container.append(button, picker);
       item.querySelector('.swatches').append(container);
@@ -184,7 +194,6 @@ function buildColors() {
     host.append(item);
   });
 
-  // Control deslizante extra para la opacidad de Marcas (0 - 100%)
   const opacityWrap = document.createElement('div');
   opacityWrap.className = 'feature';
   opacityWrap.style.marginTop = '15px';
@@ -204,7 +213,6 @@ function buildColors() {
   host.append(opacityWrap);
 }
 
-// Función auxiliar de probabilidad ponderada
 function weightedRandomChoice(array, weights) {
   const totalWeight = weights.reduce((acc, val) => acc + val, 0);
   let random = Math.random() * totalWeight;
@@ -216,33 +224,27 @@ function weightedRandomChoice(array, weights) {
 }
 
 function randomize() {
-  // 1. Reiniciar las paletas de color a las originales
   palettes = JSON.parse(JSON.stringify(originalPalettes));
 
-  // 2. Aleatoriedad de capas físicas
   layers.forEach(([folder, , options, optional, fixed]) => { 
     if (!fixed) state.choices[folder] = Math.floor(Math.random() * (options.length + (optional ? 1 : 0))); 
   });
 
-  // 3. Selección de Piel usando colores originales
   const skinColors = originalPalettes.Piel;
   const selectedSkin = skinColors[Math.floor(Math.random() * skinColors.length)];
   state.colors.Piel = selectedSkin;
-  const skinIndex = skinColors.indexOf(selectedSkin); // 0, 1, 2 o 3
+  const skinIndex = skinColors.indexOf(selectedSkin);
 
   const isDarkSkin = (skinIndex === 2 || skinIndex === 3);
 
-  // 4. Reglas genéticas para Pelo
   const peloColors = originalPalettes.Pelo;
   if (isDarkSkin) {
-    // Pelo 5 (índice 4): 5%, Pelo 3 (índice 2): 10%, Restantes (0, 1, 3): 85% repartido (28.33% c/u)
     const weights = [28.33, 28.33, 10, 28.34, 5];
     state.colors.Pelo = weightedRandomChoice(peloColors, weights);
   } else {
     state.colors.Pelo = peloColors[Math.floor(Math.random() * peloColors.length)];
   }
 
-  // Regla: Si sale Pelo 3 (índice 2), PeloSom debe ser también índice 2
   const peloIndex = peloColors.indexOf(state.colors.Pelo);
   if (peloIndex === 2) {
     state.colors.PeloSom = originalPalettes.PeloSom[2];
@@ -250,36 +252,28 @@ function randomize() {
     state.colors.PeloSom = originalPalettes.PeloSom[Math.floor(Math.random() * originalPalettes.PeloSom.length)];
   }
 
-  // 5. Reglas genéticas para Labios
   const labiosColors = originalPalettes.Labios;
   if (isDarkSkin) {
-    // Labios 1 y 2 (índices 0 y 1): 10% total (5% c/u), Labios 3 y 4: 90% total (45% c/u)
     const weights = [5, 5, 45, 45];
     state.colors.Labios = weightedRandomChoice(labiosColors, weights);
   } else {
     state.colors.Labios = labiosColors[Math.floor(Math.random() * labiosColors.length)];
   }
 
-  // 6. Reglas genéticas para Ojos
   const ojosColors = originalPalettes.Ojos;
   if (isDarkSkin) {
-    // Ojos 4 (índice 3): 25%, Ojos 5 (índice 4): 20%, Restantes (0, 1, 2): 55% repartido (18.33% c/u)
     const weights = [18.33, 18.33, 18.34, 25, 20];
     state.colors.Ojos = weightedRandomChoice(ojosColors, weights);
   } else {
     state.colors.Ojos = ojosColors[Math.floor(Math.random() * ojosColors.length)];
   }
 
-  // Resto de paletas aleatorias
   state.colors.Dientes = originalPalettes.Dientes[Math.floor(Math.random() * originalPalettes.Dientes.length)];
   
-  // Regla del color de marcas según piel
   applySkinToneRule();
 
-  // 7. Rango aleatorio de opacidad de Marcas (80% a 100%)
   state.marcasOpacity = (Math.floor(Math.random() * 21) + 80) / 100;
 
-  // Reconstruir interfaz y refrescar
   document.querySelector('#feature-controls').replaceChildren();
   document.querySelector('#color-controls').replaceChildren();
   buildFeatures();
