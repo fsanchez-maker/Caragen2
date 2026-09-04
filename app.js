@@ -24,6 +24,20 @@ const sourceCache = new Map();
 const portrait = document.querySelector('#portrait');
 const status = document.querySelector('#status');
 
+// NUEVA FUNCIÓN: Aplica la regla del color de Marcas en base al color de Piel seleccionado
+function applySkinToneRule() {
+  const currentSkinColor = state.colors.Piel;
+  const skinIndex = palettes.Piel.indexOf(currentSkinColor);
+
+  if (skinIndex === 0 || skinIndex === 1) {
+    // Tonalidades 1 y 2 -> Opción 1 de Marcas (índice 0)
+    state.colors.Marcas = palettes.Marcas[0];
+  } else if (skinIndex === 2 || skinIndex === 3) {
+    // Tonalidades 3 y 4 -> Opción 2 de Marcas (índice 1)
+    state.colors.Marcas = palettes.Marcas[1];
+  }
+}
+
 layers.forEach(([folder, , options, optional, fixed]) => state.choices[folder] = fixed ? 0 : optional ? 0 : 0);
 const fileName = (folder, option) => `${root}/${folder}/${option}.svg`;
 async function getSource(folder, option) { const key = fileName(folder, option); if (!sourceCache.has(key)) sourceCache.set(key, fetch(key).then(r => { if (!r.ok) throw new Error(key); return r.text(); })); return sourceCache.get(key); }
@@ -43,7 +57,66 @@ async function compose() {
   } catch (error) { status.textContent = 'No se pudieron cargar los SVG. Abre el proyecto desde un servidor local.'; console.error(error); }
 }
 function buildFeatures() { const host = document.querySelector('#feature-controls'); layers.filter(([, , , , fixed]) => !fixed).forEach(([folder, label, options, optional]) => { const max = options.length - 1 + (optional ? 1 : 0); const wrap = document.createElement('div'); wrap.className = 'feature'; const current = () => optional && state.choices[folder] === 0 ? 'ninguno' : options[optional ? state.choices[folder] - 1 : state.choices[folder]]; wrap.innerHTML = `<div class="feature-label"><label for="range-${folder}">${label}</label><span class="feature-value">${current()}</span></div><input id="range-${folder}" type="range" min="0" max="${max}" value="${state.choices[folder]}" />`; const input = wrap.querySelector('input'); input.addEventListener('input', () => { state.choices[folder] = +input.value; wrap.querySelector('.feature-value').textContent = current(); compose(); }); host.append(wrap); }); }
-function buildColors() { const host = document.querySelector('#color-controls'); Object.entries(palettes).forEach(([name, colors]) => { const item = document.createElement('div'); item.innerHTML = `<span class="color-name">${name}</span><div class="swatches"></div>`; colors.forEach(color => { const button = document.createElement('button'); button.className = 'swatch'; button.type = 'button'; button.style.background = color; button.title = color; button.setAttribute('aria-label', `${name}: ${color}`); button.setAttribute('aria-pressed', color === state.colors[name]); button.onclick = () => { state.colors[name] = color; item.querySelectorAll('.swatch').forEach(s => s.setAttribute('aria-pressed', String(s === button))); compose(); }; item.querySelector('.swatches').append(button); }); host.append(item); }); }
-function randomize() { layers.forEach(([folder, , options, optional, fixed]) => { if (!fixed) state.choices[folder] = Math.floor(Math.random() * (options.length + (optional ? 1 : 0))); }); Object.entries(palettes).forEach(([name, colors]) => state.colors[name] = colors[Math.floor(Math.random() * colors.length)]); document.querySelector('#feature-controls').replaceChildren(); document.querySelector('#color-controls').replaceChildren(); buildFeatures(); buildColors(); compose(); }
+
+function buildColors() {
+  const host = document.querySelector('#color-controls');
+  Object.entries(palettes).forEach(([name, colors]) => {
+    const item = document.createElement('div');
+    item.innerHTML = `<span class="color-name">${name}</span><div class="swatches"></div>`;
+    colors.forEach(color => {
+      const button = document.createElement('button');
+      button.className = 'swatch';
+      button.type = 'button';
+      button.style.background = color;
+      button.title = color;
+      button.setAttribute('aria-label', `${name}: ${color}`);
+      button.setAttribute('aria-pressed', color === state.colors[name]);
+      
+      button.onclick = () => {
+        state.colors[name] = color;
+        
+        // MODIFICACIÓN: Si se hace clic en un color de Piel, aplicamos la regla
+        if (name === 'Piel') {
+          applySkinToneRule();
+        }
+        
+        // Actualizamos los atributos "aria-pressed" visualmente de todos los paneles de color
+        document.querySelectorAll('#color-controls .swatch').forEach(s => {
+          const swatchColor = s.title;
+          const parentName = s.closest('div').previousElementSibling.textContent;
+          s.setAttribute('aria-pressed', String(swatchColor === state.colors[parentName]));
+        });
+
+        compose();
+      };
+      item.querySelector('.swatches').append(button);
+    });
+    host.append(item);
+  });
+}
+
+function randomize() {
+  layers.forEach(([folder, , options, optional, fixed]) => { if (!fixed) state.choices[folder] = Math.floor(Math.random() * (options.length + (optional ? 1 : 0))); });
+  Object.entries(palettes).forEach(([name, colors]) => state.colors[name] = colors[Math.floor(Math.random() * colors.length)]);
+  
+  // MODIFICACIÓN: Aplicamos la regla tras generar colores al azar
+  applySkinToneRule();
+
+  document.querySelector('#feature-controls').replaceChildren();
+  document.querySelector('#color-controls').replaceChildren();
+  buildFeatures();
+  buildColors();
+  compose();
+}
+
 function download() { const svg = portrait.querySelector('svg'); if (!svg) return; const copy = svg.cloneNode(true); copy.setAttribute('width', '2048'); copy.setAttribute('height', '2048'); const blob = new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(copy)}`], { type: 'image/svg+xml' }); const link = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'mi-caragen.svg' }); link.click(); URL.revokeObjectURL(link.href); }
-document.querySelector('#randomize').addEventListener('click', randomize); document.querySelector('#download').addEventListener('click', download); buildFeatures(); buildColors(); compose();
+
+document.querySelector('#randomize').addEventListener('click', randomize); 
+document.querySelector('#download').addEventListener('click', download); 
+
+// Aplicamos la regla inicialmente por si el valor por defecto de piel activa la regla
+applySkinToneRule(); 
+
+buildFeatures(); 
+buildColors(); 
+compose();
