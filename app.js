@@ -13,95 +13,273 @@ const layers = [
   ['Boca', 'Boca', ['BOC', 'BOE', 'BOA', 'BOB', 'BOD']],
   ['Base', 'Base', ['Base'], false, true]
 ];
-const palettes = {
-  Labios: ['#DE857C', '#D47475', '#C25F52', '#AE8685'], Piel: ['#F6C4A8', '#E4AD90', '#AA8056', '#715030'],
-  Ojos: ['#241607', '#322110', '#4F463E', '#58673C', '#387C7D'], Pelo: ['#0E0B09', '#382818', '#DFB76C', '#AEA995', '#A45533'],
-  PeloSom: ['#4A433C', '#44372B', '#9D8D67', '#282723', '#5E5A55'], Dientes: ['#E9E8E6', '#F9EBCD', '#FFFFFF'],
+
+// Paletas originales estáticas (se usan de referencia para aleatorio y reseteos)
+const originalPalettes = {
+  Labios: ['#DE857C', '#D47475', '#C25F52', '#AE8685'],
+  Piel: ['#F6C4A8', '#E4AD90', '#AA8056', '#715030'],
+  Ojos: ['#241607', '#322110', '#4F463E', '#58673C', '#387C7D'],
+  Pelo: ['#0E0B09', '#382818', '#DFB76C', '#AEA995', '#A45533'],
+  PeloSom: ['#4A433C', '#44372B', '#9D8D67', '#282723', '#5E5A55'],
+  Dientes: ['#E9E8E6', '#F9EBCD', '#FFFFFF'],
   Marcas: ['#BA9088', '#2C1B0E'], Cavidad: ['#2C1B0E'], Blanco: ['#FDFBFB'], Negro: ['#060507']
 };
-const state = { choices: {}, colors: Object.fromEntries(Object.entries(palettes).map(([name, values]) => [name, values[0]])) };
+
+// Paletas de trabajo (permiten modificaciones personalizadas del usuario)
+let palettes = JSON.parse(JSON.stringify(originalPalettes));
+
+const state = { 
+  choices: {}, 
+  colors: Object.fromEntries(Object.entries(palettes).map(([name, values]) => [name, values[0]])),
+  marcasOpacity: 1 // Rango 0 a 1 (100%)
+};
+
 const sourceCache = new Map();
 const portrait = document.querySelector('#portrait');
 const status = document.querySelector('#status');
 
-// NUEVA FUNCIÓN: Aplica la regla del color de Marcas en base al color de Piel seleccionado
+// Regla del color de Marcas según la Piel
 function applySkinToneRule() {
   const currentSkinColor = state.colors.Piel;
   const skinIndex = palettes.Piel.indexOf(currentSkinColor);
 
   if (skinIndex === 0 || skinIndex === 1) {
-    // Tonalidades 1 y 2 -> Opción 1 de Marcas (índice 0)
     state.colors.Marcas = palettes.Marcas[0];
   } else if (skinIndex === 2 || skinIndex === 3) {
-    // Tonalidades 3 y 4 -> Opción 2 de Marcas (índice 1)
-    state.colors.Marcas = palettes.Marcas[1];
+    state.colors.Marcas = palettes.Marcas[1] || palettes.Marcas[0];
   }
 }
 
 layers.forEach(([folder, , options, optional, fixed]) => state.choices[folder] = fixed ? 0 : optional ? 0 : 0);
 const fileName = (folder, option) => `${root}/${folder}/${option}.svg`;
-async function getSource(folder, option) { const key = fileName(folder, option); if (!sourceCache.has(key)) sourceCache.set(key, fetch(key).then(r => { if (!r.ok) throw new Error(key); return r.text(); })); return sourceCache.get(key); }
-function recolor(svg) { Object.entries(state.colors).forEach(([id, color]) => svg.querySelectorAll(`[id="${id}"]`).forEach(node => { [node, ...node.querySelectorAll('*')].forEach(child => { if (child.hasAttribute('fill') && child.getAttribute('fill') !== 'none') child.setAttribute('fill', color); if (child.hasAttribute('stroke') && child.getAttribute('stroke') !== 'none') child.setAttribute('stroke', color); }); })); return svg; }
+
+async function getSource(folder, option) { 
+  const key = fileName(folder, option); 
+  if (!sourceCache.has(key)) {
+    sourceCache.set(key, fetch(key).then(r => { 
+      if (!r.ok) throw new Error(key); 
+      return r.text(); 
+    }));
+  }
+  return sourceCache.get(key); 
+}
+
+function recolor(svg) { 
+  Object.entries(state.colors).forEach(([id, color]) => {
+    svg.querySelectorAll(`[id="${id}"]`).forEach(node => { 
+      [node, ...node.querySelectorAll('*')].forEach(child => { 
+        if (child.hasAttribute('fill') && child.getAttribute('fill') !== 'none') {
+          child.setAttribute('fill', color);
+        }
+        if (child.hasAttribute('stroke') && child.getAttribute('stroke') !== 'none') {
+          child.setAttribute('stroke', color);
+        }
+        // Aplicar la opacidad de Marcas
+        if (id === 'Marcas') {
+          child.setAttribute('opacity', state.marcasOpacity);
+        }
+      }); 
+    }); 
+  }); 
+  return svg; 
+}
+
 async function compose() {
   status.textContent = 'Componiendo tu retrato…';
   try {
-    const selected = layers.slice().reverse(); // La primera carpeta solicitada queda visualmente encima.
+    const selected = layers.slice().reverse();
     const parts = await Promise.all(selected.map(async ([folder, , options, optional]) => {
-      const index = state.choices[folder]; if (optional && index === 0) return '';
-      const option = options[optional ? index - 1 : index]; const text = await getSource(folder, option);
-      const doc = new DOMParser().parseFromString(text, 'image/svg+xml'); const inner = [...doc.documentElement.childNodes].map(n => n.outerHTML || '').join('');
+      const index = state.choices[folder]; 
+      if (optional && index === 0) return '';
+      const option = options[optional ? index - 1 : index]; 
+      const text = await getSource(folder, option);
+      const doc = new DOMParser().parseFromString(text, 'image/svg+xml'); 
+      const inner = [...doc.documentElement.childNodes].map(n => n.outerHTML || '').join('');
       return `<g data-layer="${folder}" data-option="${option}">${inner}</g>`;
     }));
     const svg = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048">${parts.join('')}</svg>`, 'image/svg+xml').documentElement;
-    portrait.replaceChildren(recolor(svg)); status.textContent = 'Retrato listo.';
-  } catch (error) { status.textContent = 'No se pudieron cargar los SVG. Abre el proyecto desde un servidor local.'; console.error(error); }
+    portrait.replaceChildren(recolor(svg)); 
+    status.textContent = 'Retrato listo.';
+  } catch (error) { 
+    status.textContent = 'No se pudieron cargar los SVG. Abre el proyecto desde un servidor local.'; 
+    console.error(error); 
+  }
 }
-function buildFeatures() { const host = document.querySelector('#feature-controls'); layers.filter(([, , , , fixed]) => !fixed).forEach(([folder, label, options, optional]) => { const max = options.length - 1 + (optional ? 1 : 0); const wrap = document.createElement('div'); wrap.className = 'feature'; const current = () => optional && state.choices[folder] === 0 ? 'ninguno' : options[optional ? state.choices[folder] - 1 : state.choices[folder]]; wrap.innerHTML = `<div class="feature-label"><label for="range-${folder}">${label}</label><span class="feature-value">${current()}</span></div><input id="range-${folder}" type="range" min="0" max="${max}" value="${state.choices[folder]}" />`; const input = wrap.querySelector('input'); input.addEventListener('input', () => { state.choices[folder] = +input.value; wrap.querySelector('.feature-value').textContent = current(); compose(); }); host.append(wrap); }); }
+
+function buildFeatures() { 
+  const host = document.querySelector('#feature-controls'); 
+  layers.filter(([, , , , fixed]) => !fixed).forEach(([folder, label, options, optional]) => { 
+    const max = options.length - 1 + (optional ? 1 : 0); 
+    const wrap = document.createElement('div'); 
+    wrap.className = 'feature'; 
+    const current = () => optional && state.choices[folder] === 0 ? 'ninguno' : options[optional ? state.choices[folder] - 1 : state.choices[folder]]; 
+    wrap.innerHTML = `<div class="feature-label"><label for="range-${folder}">${label}</label><span class="feature-value">${current()}</span></div><input id="range-${folder}" type="range" min="0" max="${max}" value="${state.choices[folder]}" />`; 
+    const input = wrap.querySelector('input'); 
+    input.addEventListener('input', () => { 
+      state.choices[folder] = +input.value; 
+      wrap.querySelector('.feature-value').textContent = current(); 
+      compose(); 
+    }); 
+    host.append(wrap); 
+  }); 
+}
 
 function buildColors() {
   const host = document.querySelector('#color-controls');
   Object.entries(palettes).forEach(([name, colors]) => {
     const item = document.createElement('div');
+    item.className = 'color-group';
     item.innerHTML = `<span class="color-name">${name}</span><div class="swatches"></div>`;
-    colors.forEach(color => {
+    
+    colors.forEach((color, index) => {
+      const container = document.createElement('div');
+      container.style.position = 'relative';
+      container.style.display = 'inline-block';
+
       const button = document.createElement('button');
       button.className = 'swatch';
       button.type = 'button';
       button.style.background = color;
-      button.title = color;
+      button.title = `${name}: Haz clic para seleccionar | Doble clic para cambiar color`;
       button.setAttribute('aria-label', `${name}: ${color}`);
       button.setAttribute('aria-pressed', color === state.colors[name]);
       
-      button.onclick = () => {
-        state.colors[name] = color;
-        
-        // MODIFICACIÓN: Si se hace clic en un color de Piel, aplicamos la regla
-        if (name === 'Piel') {
-          applySkinToneRule();
-        }
-        
-        // Actualizamos los atributos "aria-pressed" visualmente de todos los paneles de color
-        document.querySelectorAll('#color-controls .swatch').forEach(s => {
-          const swatchColor = s.title;
-          const parentName = s.closest('div').previousElementSibling.textContent;
-          s.setAttribute('aria-pressed', String(swatchColor === state.colors[parentName]));
-        });
+      // Input tipo color (RGB/Hex) para permitir modificación por el usuario
+      const picker = document.createElement('input');
+      picker.type = 'color';
+      picker.value = color.length === 7 ? color : '#000000';
+      picker.style.position = 'absolute';
+      picker.style.top = '0';
+      picker.style.left = '0';
+      picker.style.opacity = '0';
+      picker.style.width = '100%';
+      picker.style.height = '100%';
+      picker.style.cursor = 'pointer';
 
+      // Un clic selecciona el color
+      button.onclick = () => {
+        state.colors[name] = palettes[name][index];
+        if (name === 'Piel') applySkinToneRule();
+        
+        document.querySelectorAll('#color-controls .swatch').forEach(s => {
+          const swatchColor = s.style.background;
+          s.setAttribute('aria-pressed', String(swatchColor === state.colors[name]));
+        });
         compose();
       };
-      item.querySelector('.swatches').append(button);
+
+      // Selección de nuevo color mediante selector nativo
+      picker.addEventListener('change', (e) => {
+        const newColor = e.target.value.toUpperCase();
+        palettes[name][index] = newColor;
+        button.style.background = newColor;
+        state.colors[name] = newColor;
+        if (name === 'Piel') applySkinToneRule();
+        compose();
+      });
+
+      container.append(button, picker);
+      item.querySelector('.swatches').append(container);
     });
     host.append(item);
   });
+
+  // Control deslizante extra para la opacidad de Marcas (0 - 100%)
+  const opacityWrap = document.createElement('div');
+  opacityWrap.className = 'feature';
+  opacityWrap.style.marginTop = '15px';
+  opacityWrap.innerHTML = `
+    <div class="feature-label">
+      <label for="marcas-opacity">Opacidad de Marcas</label>
+      <span id="marcas-opacity-val">${Math.round(state.marcasOpacity * 100)}%</span>
+    </div>
+    <input id="marcas-opacity" type="range" min="0" max="100" value="${Math.round(state.marcasOpacity * 100)}" />
+  `;
+  const opInput = opacityWrap.querySelector('input');
+  opInput.addEventListener('input', () => {
+    state.marcasOpacity = opInput.value / 100;
+    opacityWrap.querySelector('#marcas-opacity-val').textContent = `${opInput.value}%`;
+    compose();
+  });
+  host.append(opacityWrap);
+}
+
+// Función auxiliar de probabilidad ponderada
+function weightedRandomChoice(array, weights) {
+  const totalWeight = weights.reduce((acc, val) => acc + val, 0);
+  let random = Math.random() * totalWeight;
+  for (let i = 0; i < array.length; i++) {
+    if (random < weights[i]) return array[i];
+    random -= weights[i];
+  }
+  return array[0];
 }
 
 function randomize() {
-  layers.forEach(([folder, , options, optional, fixed]) => { if (!fixed) state.choices[folder] = Math.floor(Math.random() * (options.length + (optional ? 1 : 0))); });
-  Object.entries(palettes).forEach(([name, colors]) => state.colors[name] = colors[Math.floor(Math.random() * colors.length)]);
+  // 1. Reiniciar las paletas de color a las originales
+  palettes = JSON.parse(JSON.stringify(originalPalettes));
+
+  // 2. Aleatoriedad de capas físicas
+  layers.forEach(([folder, , options, optional, fixed]) => { 
+    if (!fixed) state.choices[folder] = Math.floor(Math.random() * (options.length + (optional ? 1 : 0))); 
+  });
+
+  // 3. Selección de Piel usando colores originales
+  const skinColors = originalPalettes.Piel;
+  const selectedSkin = skinColors[Math.floor(Math.random() * skinColors.length)];
+  state.colors.Piel = selectedSkin;
+  const skinIndex = skinColors.indexOf(selectedSkin); // 0, 1, 2 o 3
+
+  const isDarkSkin = (skinIndex === 2 || skinIndex === 3);
+
+  // 4. Reglas genéticas para Pelo
+  const peloColors = originalPalettes.Pelo;
+  if (isDarkSkin) {
+    // Pelo 5 (índice 4): 5%, Pelo 3 (índice 2): 10%, Restantes (0, 1, 3): 85% repartido (28.33% c/u)
+    const weights = [28.33, 28.33, 10, 28.34, 5];
+    state.colors.Pelo = weightedRandomChoice(peloColors, weights);
+  } else {
+    state.colors.Pelo = peloColors[Math.floor(Math.random() * peloColors.length)];
+  }
+
+  // Regla: Si sale Pelo 3 (índice 2), PeloSom debe ser también índice 2
+  const peloIndex = peloColors.indexOf(state.colors.Pelo);
+  if (peloIndex === 2) {
+    state.colors.PeloSom = originalPalettes.PeloSom[2];
+  } else {
+    state.colors.PeloSom = originalPalettes.PeloSom[Math.floor(Math.random() * originalPalettes.PeloSom.length)];
+  }
+
+  // 5. Reglas genéticas para Labios
+  const labiosColors = originalPalettes.Labios;
+  if (isDarkSkin) {
+    // Labios 1 y 2 (índices 0 y 1): 10% total (5% c/u), Labios 3 y 4: 90% total (45% c/u)
+    const weights = [5, 5, 45, 45];
+    state.colors.Labios = weightedRandomChoice(labiosColors, weights);
+  } else {
+    state.colors.Labios = labiosColors[Math.floor(Math.random() * labiosColors.length)];
+  }
+
+  // 6. Reglas genéticas para Ojos
+  const ojosColors = originalPalettes.Ojos;
+  if (isDarkSkin) {
+    // Ojos 4 (índice 3): 25%, Ojos 5 (índice 4): 20%, Restantes (0, 1, 2): 55% repartido (18.33% c/u)
+    const weights = [18.33, 18.33, 18.34, 25, 20];
+    state.colors.Ojos = weightedRandomChoice(ojosColors, weights);
+  } else {
+    state.colors.Ojos = ojosColors[Math.floor(Math.random() * ojosColors.length)];
+  }
+
+  // Resto de paletas aleatorias
+  state.colors.Dientes = originalPalettes.Dientes[Math.floor(Math.random() * originalPalettes.Dientes.length)];
   
-  // MODIFICACIÓN: Aplicamos la regla tras generar colores al azar
+  // Regla del color de marcas según piel
   applySkinToneRule();
 
+  // 7. Rango aleatorio de opacidad de Marcas (80% a 100%)
+  state.marcasOpacity = (Math.floor(Math.random() * 21) + 80) / 100;
+
+  // Reconstruir interfaz y refrescar
   document.querySelector('#feature-controls').replaceChildren();
   document.querySelector('#color-controls').replaceChildren();
   buildFeatures();
@@ -109,14 +287,22 @@ function randomize() {
   compose();
 }
 
-function download() { const svg = portrait.querySelector('svg'); if (!svg) return; const copy = svg.cloneNode(true); copy.setAttribute('width', '2048'); copy.setAttribute('height', '2048'); const blob = new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(copy)}`], { type: 'image/svg+xml' }); const link = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'mi-caragen.svg' }); link.click(); URL.revokeObjectURL(link.href); }
+function download() { 
+  const svg = portrait.querySelector('svg'); 
+  if (!svg) return; 
+  const copy = svg.cloneNode(true); 
+  copy.setAttribute('width', '2048'); 
+  copy.setAttribute('height', '2048'); 
+  const blob = new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(copy)}`], { type: 'image/svg+xml' }); 
+  const link = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'mi-caragen.svg' }); 
+  link.click(); 
+  URL.revokeObjectURL(link.href); 
+}
 
 document.querySelector('#randomize').addEventListener('click', randomize); 
 document.querySelector('#download').addEventListener('click', download); 
 
-// Aplicamos la regla inicialmente por si el valor por defecto de piel activa la regla
 applySkinToneRule(); 
-
 buildFeatures(); 
 buildColors(); 
 compose();
