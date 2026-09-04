@@ -16,7 +16,7 @@ const layers = [
 const palettes = {
   Labios: ['#DE857C', '#D47475', '#C25F52', '#AE8685'], Piel: ['#FFCC99', '#E4AD90', '#AA8056', '#715030', '#37230F'],
   Ojos: ['#241607', '#322110', '#4F463E', '#58673C', '#387C7D'], Pelo: ['#0E0B09', '#382818', '#A5822B', '#AEA995', '#A45533'],
-  PeloSom: ['#4A433C', '#44372B', '#9D8D67', '#282723', '#5E5A55'], Dientes: ['#E9E8E6', '#BFB8A7', '#F9EBCD', '#FFFFFF'],
+  PeloSom: ['#4A433C', '#44372B', '#9D8D67', '#282723', '#5E5A55'], Dientes: ['#E9E8E6', '#F9EBCD', '#FFFFFF'],
   Marcas: ['#BA9088', '#9F8262', '#BB7887', '#A59596'], Cavidad: ['#2C1B0E'], Blanco: ['#FDFBFB'], Negro: ['#060507']
 };
 const state = { choices: {}, colors: Object.fromEntries(Object.entries(palettes).map(([name, values]) => [name, values[0]])) };
